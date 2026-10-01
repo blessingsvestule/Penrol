@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PENROL</title>
+<style>
+  :root {
+    --indigo: #4A40C1;
+    --amber: #FEC61E;
+    --cream: #FEF2D9;
+    --navy: #32297B;
+    --lavender: #F3E6FD;
+    --orange: #F75A1A;
+    --green: #2E9E6B;
+    --muted: #6B63A8;
+    --border: #D8D2F2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    background: var(--cream);
+    color: var(--navy);
+    min-height: 100vh;
+    padding: env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0) 0;
+  }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 24px 20px; min-height: 100vh; display: flex; flex-direction: column; }
+  .screen { display: none; flex-direction: column; gap: 14px; flex: 1; }
+  .screen.active { display: flex; }
+  .logo-row { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 30px 0; }
+  .logo-row .name { font-size: 26px; font-weight: 700; color: var(--indigo); letter-spacing: 1px; }
+  .logo-row .tag { font-size: 13px; color: var(--muted); }
+  h1 { font-size: 19px; font-weight: 600; }
+  .sub { font-size: 13px; color: var(--muted); }
+  label { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 4px; display: block; }
+  input, select { width: 100%; padding: 12px; border-radius: 10px; border: 1.5px solid var(--border); font-size: 14px; background: #fff; }
+  .field { margin-bottom: 4px; }
+  button { font-family: inherit; cursor: pointer; border: none; }
+  .btn { background: var(--indigo); color: #fff; border-radius: 12px; padding: 13px; font-size: 14px; font-weight: 600; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn:disabled { opacity: 0.6; }
+  .btn-outline { background: transparent; color: var(--indigo); border: 1.5px solid var(--indigo); border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 600; width: 100%; }
+  .link-btn { background: none; color: var(--muted); font-size: 13px; text-decoration: underline; }
+  .card { background: #fff; border-radius: 14px; padding: 16px; }
+  .error { color: var(--orange); font-size: 13px; background: #FFF0E8; padding: 10px 12px; border-radius: 10px; display: none; }
+  .error.show { display: block; }
+  .code-box { background: var(--lavender); border-radius: 14px; padding: 18px; text-align: center; }
+  .code-box .code { font-size: 28px; font-weight: 700; letter-spacing: 6px; margin: 8px 0; }
+  .child-card { background: #fff; border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--indigo); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; flex-shrink: 0; }
+  .child-card .info { flex: 1; }
+  .child-card .info .n { font-weight: 600; font-size: 14px; }
+  .child-card .info .a { font-size: 12px; color: var(--muted); }
+  .topbar { display: flex; align-items: center; gap: 10px; }
+  .topbar .back { color: var(--muted); font-size: 13px; cursor: pointer; }
+  .spacer { flex: 1; }
+  .center-note { text-align: center; font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- FRONT DOOR -->
+  <div class="screen active" id="screen-front">
+    <div class="logo-row">
+      <div class="name">PENROL</div>
+      <div class="tag">Reading time, together</div>
+    </div>
+    <button class="btn" onclick="showScreen('signup')">Create a family account</button>
+    <button class="btn-outline" onclick="showScreen('login')">I already have an account</button>
+    <p class="center-note">Children join with a code a parent gives them, not by signing up here.</p>
+  </div>
+
+  <!-- SIGN UP -->
+  <div class="screen" id="screen-signup">
+    <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
+    <h1>Create your family account</h1>
+    <p class="sub">This is the parent account. You'll add your children next.</p>
+    <div class="error" id="signup-error"></div>
+    <div class="field"><label>Your name</label><input id="signup-name" type="text" placeholder="e.g. Blessing"></div>
+    <div class="field"><label>Email</label><input id="signup-email" type="email" placeholder="you@example.com"></div>
+    <div class="field"><label>Password</label><input id="signup-password" type="password" placeholder="At least 6 characters"></div>
+    <button class="btn" id="signup-btn" onclick="handleSignup()">Create account</button>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="screen" id="screen-login">
+    <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
+    <h1>Log in</h1>
+    <div class="error" id="login-error"></div>
+    <div class="field"><label>Email</label><input id="login-email" type="email"></div>
+    <div class="field"><label>Password</label><input id="login-password" type="password"></div>
+    <button class="btn" id="login-btn" onclick="handleLogin()">Log in</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="screen" id="screen-dashboard">
+    <div class="topbar">
+      <h1 style="flex:1">Your children</h1>
+      <span class="back" onclick="handleLogout()">Log out</span>
+    </div>
+    <div id="children-list"></div>
+    <button class="btn" onclick="showScreen('add-child')">+ Add child</button>
+  </div>
+
+  <!-- ADD CHILD -->
+  <div class="screen" id="screen-add-child">
+    <div class="topbar"><span class="back" onclick="showScreen('dashboard')">&larr; Back</span></div>
+    <h1>New profile</h1>
+    <div class="error" id="child-error"></div>
+    <div class="field"><label>Name</label><input id="child-name" type="text" placeholder="e.g. Amara"></div>
+    <div class="field"><label>Age</label><input id="child-age" type="number" min="1" max="19" placeholder="e.g. 7"></div>
+    <button class="btn" id="child-btn" onclick="handleAddChild()">Save and get a code</button>
+  </div>
+
+  <!-- CHILD CODE RESULT -->
+  <div class="screen" id="screen-child-code">
+    <div class="topbar"><span class="back" onclick="renderChildren(); showScreen('dashboard')">&larr; Dashboard</span></div>
+    <h1 id="code-title">Profile created</h1>
+    <div class="code-box">
+      <p class="sub">Give this code to <span id="code-child-name"></span></p>
+      <div class="code" id="code-value">------</div>
+    </div>
+    <p class="sub" style="text-align:center">This code only opens this child's own profile.</p>
+    <button class="btn" onclick="renderChildren(); showScreen('dashboard')">Done</button>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = "https://qvitgveyyuomqfccehth.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_Ue53QNrMveynqKG07ChoKQ_mSb-ctI9";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let currentFamilyId = null;
+
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + name).classList.add('active');
+  }
+
+  function showError(elId, msg) {
+    const el = document.getElementById(elId);
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+  function clearError(elId) {
+    document.getElementById(elId).classList.remove('show');
+  }
+
+  async function handleSignup() {
+    clearError('signup-error');
+    const name = document.getElementById('signup-name').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+    if (!name || !email || password.length < 6) {
+      showError('signup-error', 'Please fill every field. Password needs at least 6 characters.');
+      return;
+    }
+    const btn = document.getElementById('signup-btn');
+    btn.disabled = true; btn.textContent = 'Creating...';
+
+    const { data: authData, error: authError } = await sb.auth.signUp({ email, password });
+    if (authError) {
+      showError('signup-error', authError.message);
+      btn.disabled = false; btn.textContent = 'Create account';
+      return;
+    }
+
+    // Create the family row
+    const { data: familyData, error: familyError } = await sb
+      .from('families')
+      .insert({})
+      .select()
+      .single();
+
+    if (familyError) {
+      showError('signup-error', 'Account created, but family setup failed: ' + familyError.message);
+      btn.disabled = false; btn.textContent = 'Create account';
+      return;
+    }
+
+    // Create the parent row, linked to the family
+    const { error: parentError } = await sb
+      .from('parents')
+      .insert({ id: authData.user.id, family_id: familyData.id, name });
+
+    if (parentError) {
+      showError('signup-error', 'Family created, but parent profile failed: ' + parentError.message);
+      btn.disabled = false; btn.textContent = 'Create account';
+      return;
+    }
+
+    currentFamilyId = familyData.id;
+    btn.disabled = false; btn.textContent = 'Create account';
+    renderChildren();
+    showScreen('dashboard');
+  }
+
+  async function handleLogin() {
+    clearError('login-error');
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true; btn.textContent = 'Logging in...';
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      showError('login-error', error.message);
+      btn.disabled = false; btn.textContent = 'Log in';
+      return;
+    }
+
+    const { data: parentRow, error: parentError } = await sb
+      .from('parents')
+      .select('family_id')
+      .eq('id', data.user.id)
+      .single();
+
+    btn.disabled = false; btn.textContent = 'Log in';
+
+    if (parentError || !parentRow) {
+      showError('login-error', 'Could not find your family profile.');
+      return;
+    }
+
+    currentFamilyId = parentRow.family_id;
+    renderChildren();
+    showScreen('dashboard');
+  }
+
+  async function handleLogout() {
+    await sb.auth.signOut();
+    currentFamilyId = null;
+    showScreen('front');
+  }
+
+  async function handleAddChild() {
+    clearError('child-error');
+    const name = document.getElementById('child-name').value.trim();
+    const age = parseInt(document.getElementById('child-age').value, 10);
+    if (!name || !age || age < 1 || age > 19) {
+      showError('child-error', 'Enter a name and a valid age.');
+      return;
+    }
+    const btn = document.getElementById('child-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    const { data, error } = await sb
+      .from('children')
+      .insert({ family_id: currentFamilyId, name, age })
+      .select()
+      .single();
+
+    btn.disabled = false; btn.textContent = 'Save and get a code';
+
+    if (error) {
+      showError('child-error', error.message);
+      return;
+    }
+
+    document.getElementById('child-name').value = '';
+    document.getElementById('child-age').value = '';
+    document.getElementById('code-child-name').textContent = data.name;
+    document.getElementById('code-value').textContent = data.join_code;
+    showScreen('child-code');
+  }
+
+  async function renderChildren() {
+    const { data, error } = await sb
+      .from('children')
+      .select('*')
+      .eq('family_id', currentFamilyId)
+      .order('created_at', { ascending: true });
+
+    const list = document.getElementById('children-list');
+    list.innerHTML = '';
+    if (error || !data || data.length === 0) {
+      list.innerHTML = '<p class="sub" style="text-align:center;padding:20px 0">No children added yet.</p>';
+      return;
+    }
+    data.forEach(child => {
+      const initial = child.name.charAt(0).toUpperCase();
+      const div = document.createElement('div');
+      div.className = 'child-card';
+      div.style.marginBottom = '8px';
+      div.innerHTML = `
+        <div class="avatar">${initial}</div>
+        <div class="info">
+          <div class="n">${child.name}, ${child.age}</div>
+          <div class="a">Code: ${child.join_code}</div>
+        </div>`;
+      list.appendChild(div);
+    });
+  }
+
+  // On load, check if already logged in
+  (async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      const { data: parentRow } = await sb
+        .from('parents')
+        .select('family_id')
+        .eq('id', session.user.id)
+        .single();
+      if (parentRow) {
+        currentFamilyId = parentRow.family_id;
+        renderChildren();
+        showScreen('dashboard');
+      }
+    }
+  })();
+</script>
+</body>
+</html>
