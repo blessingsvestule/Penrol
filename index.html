@@ -65,29 +65,48 @@
       <div class="name">PENROL</div>
       <div class="tag">Reading time, together</div>
     </div>
-    <button class="btn" onclick="showScreen('signup')">Create a family</button>
-    <button class="btn-outline" onclick="showScreen('login')">I have a code</button>
-    <p class="center-note">No email or password anywhere &mdash; everyone gets in with a code.</p>
+    <button class="btn" onclick="showScreen('signup')">Get started</button>
+    <button class="btn-outline" onclick="showScreen('child-entry')">I'm a child with a code</button>
+    <p class="center-note" onclick="showScreen('login')" style="text-decoration:underline;cursor:pointer">Restore access on a new device</p>
   </div>
 
-  <!-- CREATE FAMILY -->
+  <!-- CREATE FAMILY (first-time parent, no code involved) -->
   <div class="screen" id="screen-signup">
     <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
-    <h1>Create your family</h1>
-    <p class="sub">Just your name &mdash; you'll get a family code to log back in anywhere.</p>
+    <h1>Welcome</h1>
+    <p class="sub">Just your name to get started.</p>
     <div class="error" id="signup-error"></div>
     <div class="field"><label>Your name</label><input id="signup-name" type="text" placeholder="e.g. Blessing"></div>
-    <button class="btn" id="signup-btn" onclick="handleSignup()">Create my family</button>
+    <button class="btn" id="signup-btn" onclick="handleSignup()">Continue</button>
   </div>
 
-  <!-- ENTER CODE (login / co-parent / returning) -->
+  <!-- RESTORE ACCESS / CO-PARENT (tucked away, not the primary door) -->
   <div class="screen" id="screen-login">
     <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
-    <h1>Enter your code</h1>
-    <p class="sub">Use your family code to log in, or a code someone shared with you.</p>
+    <h1>Restore access</h1>
+    <p class="sub">Enter your family code &mdash; found in Settings on your other device, or shared by your co-parent.</p>
     <div class="error" id="login-error"></div>
-    <div class="field"><label>Code</label><input id="login-code" type="text" maxlength="6" style="letter-spacing:4px;text-transform:uppercase;font-size:18px;text-align:center" placeholder="------"></div>
+    <div class="field"><label>Family code</label><input id="login-code" type="text" maxlength="6" autocapitalize="characters" autocomplete="off" style="letter-spacing:4px;text-transform:uppercase;font-size:18px;text-align:center" placeholder="------"></div>
     <button class="btn" id="login-btn" onclick="handleLogin()">Continue</button>
+  </div>
+
+  <!-- CHILD ENTRY -->
+  <div class="screen" id="screen-child-entry">
+    <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
+    <h1>Enter your code</h1>
+    <p class="sub">A parent gave you a code. Type it in below.</p>
+    <div class="error" id="child-entry-error"></div>
+    <div class="field"><label>Your code</label><input id="child-entry-code" type="text" maxlength="6" autocapitalize="characters" autocomplete="off" style="letter-spacing:4px;text-transform:uppercase;font-size:18px;text-align:center" placeholder="------"></div>
+    <button class="btn" id="child-entry-btn" onclick="handleChildEntry()">Continue</button>
+  </div>
+
+  <!-- CHILD WELCOME (placeholder until the real child screen is built) -->
+  <div class="screen" id="screen-child-welcome">
+    <div class="logo-row">
+      <div class="name" id="child-welcome-name">Hi!</div>
+      <div class="tag">You're in &mdash; your reading screen is coming next.</div>
+    </div>
+    <button class="btn-outline" onclick="showScreen('front')">Back to start</button>
   </div>
 
   <!-- DASHBOARD -->
@@ -96,6 +115,7 @@
       <h1 style="flex:1">Your children</h1>
       <span class="back" onclick="handleLogout()">Log out</span>
     </div>
+    <p class="sub" id="dashboard-family-code"></p>
     <div id="children-list"></div>
     <button class="btn" onclick="showScreen('add-child')">+ Add child</button>
   </div>
@@ -112,14 +132,14 @@
 
   <!-- CHILD CODE RESULT -->
   <div class="screen" id="screen-child-code">
-    <div class="topbar"><span class="back" onclick="renderChildren(); showScreen('dashboard')">&larr; Dashboard</span></div>
+    <div class="topbar"><span class="back" onclick="renderChildren(); loadFamilyCode(); showScreen('dashboard')">&larr; Dashboard</span></div>
     <h1 id="code-title">Profile created</h1>
     <div class="code-box">
       <p class="sub">Give this code to <span id="code-child-name"></span></p>
       <div class="code" id="code-value">------</div>
     </div>
     <p class="sub" style="text-align:center">This code only opens this child's own profile.</p>
-    <button class="btn" onclick="renderChildren(); showScreen('dashboard')">Done</button>
+    <button class="btn" onclick="renderChildren(); loadFamilyCode(); showScreen('dashboard')">Done</button>
   </div>
 
 </div>
@@ -161,12 +181,12 @@
       return;
     }
     const btn = document.getElementById('signup-btn');
-    btn.disabled = true; btn.textContent = 'Creating...';
+    btn.disabled = true; btn.textContent = 'Setting up...';
 
     const { data: authData, error: authError } = await sb.auth.signInAnonymously();
     if (authError) {
       showError('signup-error', authError.message);
-      btn.disabled = false; btn.textContent = 'Create my family';
+      btn.disabled = false; btn.textContent = 'Continue';
       return;
     }
 
@@ -179,7 +199,7 @@
 
     if (familyError) {
       showError('signup-error', 'Family setup failed: ' + familyError.message);
-      btn.disabled = false; btn.textContent = 'Create my family';
+      btn.disabled = false; btn.textContent = 'Continue';
       return;
     }
 
@@ -189,16 +209,38 @@
 
     if (parentError) {
       showError('signup-error', 'Parent profile failed: ' + parentError.message);
-      btn.disabled = false; btn.textContent = 'Create my family';
+      btn.disabled = false; btn.textContent = 'Continue';
       return;
     }
 
     currentFamilyId = familyId;
-    btn.disabled = false; btn.textContent = 'Create my family';
-    document.getElementById('code-title').textContent = 'Your family code';
-    document.getElementById('code-child-name').textContent = 'you, to log in anywhere';
-    document.getElementById('code-value').textContent = inviteCode;
-    showScreen('child-code');
+    btn.disabled = false; btn.textContent = 'Continue';
+    renderChildren();
+    loadFamilyCode();
+    showScreen('dashboard');
+  }
+
+  async function handleChildEntry() {
+    clearError('child-entry-error');
+    const code = document.getElementById('child-entry-code').value.trim();
+    if (!code) {
+      showError('child-entry-error', 'Enter your code.');
+      return;
+    }
+    const btn = document.getElementById('child-entry-btn');
+    btn.disabled = true; btn.textContent = 'Checking...';
+
+    const { data: lookup, error: lookupError } = await sb.rpc('get_child_by_code', { code_input: code });
+
+    btn.disabled = false; btn.textContent = 'Continue';
+
+    if (lookupError || !lookup || lookup.length === 0) {
+      showError('child-entry-error', "That code doesn't match anyone. Check it and try again.");
+      return;
+    }
+
+    document.getElementById('child-welcome-name').textContent = 'Hi, ' + lookup[0].name + '!';
+    showScreen('child-welcome');
   }
 
   async function handleLogin() {
@@ -241,6 +283,7 @@
     btn.disabled = false; btn.textContent = 'Continue';
     currentFamilyId = familyId;
     renderChildren();
+    loadFamilyCode();
     showScreen('dashboard');
   }
 
@@ -261,9 +304,11 @@
     const btn = document.getElementById('child-btn');
     btn.disabled = true; btn.textContent = 'Saving...';
 
+    const joinCode = generateCode();
+
     const { data, error } = await sb
       .from('children')
-      .insert({ family_id: currentFamilyId, name, age })
+      .insert({ family_id: currentFamilyId, name, age, join_code: joinCode })
       .select()
       .single();
 
@@ -280,6 +325,20 @@
     document.getElementById('code-child-name').textContent = data.name;
     document.getElementById('code-value').textContent = data.join_code;
     showScreen('child-code');
+  }
+
+  async function loadFamilyCode() {
+    const { data, error } = await sb
+      .from('families')
+      .select('invite_code')
+      .eq('id', currentFamilyId)
+      .single();
+    const el = document.getElementById('dashboard-family-code');
+    if (!error && data) {
+      el.textContent = 'Family code: ' + data.invite_code + ' (for a co-parent, or a new device)';
+    } else {
+      el.textContent = '';
+    }
   }
 
   async function renderChildren() {
@@ -322,6 +381,7 @@
       if (parentRow) {
         currentFamilyId = parentRow.family_id;
         renderChildren();
+        loadFamilyCode();
         showScreen('dashboard');
       }
     }
