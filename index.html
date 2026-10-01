@@ -106,6 +106,10 @@
       <div class="name" id="child-welcome-name">Hi!</div>
       <div class="tag">You're in &mdash; your reading screen is coming next.</div>
     </div>
+    <div id="child-notif-banner" style="display:none">
+      <p class="sub">Turn on reading-time reminders?</p>
+      <button class="btn" onclick="enableChildNotifications()">Turn on reminders</button>
+    </div>
     <button class="btn-outline" onclick="showScreen('front')">Back to start</button>
   </div>
 
@@ -116,6 +120,10 @@
       <span class="back" onclick="handleLogout()">Log out</span>
     </div>
     <p class="sub" id="dashboard-family-code"></p>
+    <div id="parent-notif-banner" style="display:none">
+      <p class="sub">Turn on reading-time alerts for this device?</p>
+      <button class="btn-outline" onclick="enableParentNotifications()">Turn on alerts</button>
+    </div>
     <div id="children-list"></div>
     <button class="btn" id="add-child-btn" onclick="showScreen('add-child')">+ Add child</button>
     <p class="sub" id="coparent-note" style="display:none;text-align:center">Only the parent who created this family can add children.</p>
@@ -163,6 +171,76 @@
 
   let currentFamilyId = null;
   let isPrimaryParent = true;
+  let currentChildCode = null;
+  const VAPID_PUBLIC_KEY = 'BAloo4HejlonqBcT7z31gyM7VPpM8p69urYyzYEWhg-42RXPRRLG2zBuhb_wMo123nJy2fAtDz3XeatWylxr_jI';
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+  }
+
+  async function maybeShowParentNotifBanner() {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (Notification.permission === 'default') {
+      document.getElementById('parent-notif-banner').style.display = 'block';
+    }
+  }
+
+  async function maybeShowChildNotifBanner() {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (Notification.permission === 'default') {
+      document.getElementById('child-notif-banner').style.display = 'block';
+    }
+  }
+
+  async function enableParentNotifications() {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { document.getElementById('parent-notif-banner').style.display = 'none'; return; }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      const subJson = sub.toJSON();
+      await sb.rpc('save_parent_push_subscription', {
+        endpoint_input: subJson.endpoint,
+        p256dh_input: subJson.keys.p256dh,
+        auth_input: subJson.keys.auth
+      });
+      document.getElementById('parent-notif-banner').style.display = 'none';
+    } catch (e) {
+      console.error('Notification setup failed', e);
+    }
+  }
+
+  async function enableChildNotifications() {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { document.getElementById('child-notif-banner').style.display = 'none'; return; }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      const subJson = sub.toJSON();
+      await sb.rpc('save_child_push_subscription', {
+        code_input: currentChildCode,
+        endpoint_input: subJson.endpoint,
+        p256dh_input: subJson.keys.p256dh,
+        auth_input: subJson.keys.auth
+      });
+      document.getElementById('child-notif-banner').style.display = 'none';
+    } catch (e) {
+      console.error('Notification setup failed', e);
+    }
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/penrol/sw.js').catch(e => console.error('SW registration failed', e));
+  }
 
   function updateAddChildVisibility() {
     document.getElementById('add-child-btn').style.display = isPrimaryParent ? 'flex' : 'none';
@@ -236,6 +314,7 @@
     renderChildren();
     loadFamilyCode();
     updateAddChildVisibility();
+    maybeShowParentNotifBanner();
     showScreen('dashboard');
   }
 
@@ -259,7 +338,9 @@
     }
 
     document.getElementById('child-welcome-name').textContent = 'Hi, ' + lookup[0].name + '!';
+    currentChildCode = code.toUpperCase();
     showScreen('child-welcome');
+    maybeShowChildNotifBanner();
   }
 
   async function handleLogin() {
@@ -311,6 +392,7 @@
     renderChildren();
     loadFamilyCode();
     updateAddChildVisibility();
+    maybeShowParentNotifBanner();
     showScreen('dashboard');
   }
 
@@ -463,6 +545,7 @@
         renderChildren();
         loadFamilyCode();
         updateAddChildVisibility();
+    maybeShowParentNotifBanner();
         showScreen('dashboard');
       }
     }
