@@ -117,7 +117,8 @@
     </div>
     <p class="sub" id="dashboard-family-code"></p>
     <div id="children-list"></div>
-    <button class="btn" onclick="showScreen('add-child')">+ Add child</button>
+    <button class="btn" id="add-child-btn" onclick="showScreen('add-child')">+ Add child</button>
+    <p class="sub" id="coparent-note" style="display:none;text-align:center">Only the parent who created this family can add children.</p>
   </div>
 
   <!-- ADD CHILD -->
@@ -161,6 +162,12 @@
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let currentFamilyId = null;
+  let isPrimaryParent = true;
+
+  function updateAddChildVisibility() {
+    document.getElementById('add-child-btn').style.display = isPrimaryParent ? 'flex' : 'none';
+    document.getElementById('coparent-note').style.display = isPrimaryParent ? 'none' : 'block';
+  }
 
   function showScreen(name) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -215,7 +222,7 @@
 
     const { error: parentError } = await sb
       .from('parents')
-      .insert({ id: authData.user.id, family_id: familyId, name });
+      .insert({ id: authData.user.id, family_id: familyId, name, is_primary: true });
 
     if (parentError) {
       showError('signup-error', 'Parent profile failed: ' + parentError.message);
@@ -224,9 +231,11 @@
     }
 
     currentFamilyId = familyId;
+    isPrimaryParent = true;
     btn.disabled = false; btn.textContent = 'Continue';
     renderChildren();
     loadFamilyCode();
+    updateAddChildVisibility();
     showScreen('dashboard');
   }
 
@@ -282,24 +291,33 @@
 
     const { data: existingParent } = await sb
       .from('parents')
-      .select('id')
+      .select('id, is_primary')
       .eq('id', authData.user.id)
       .maybeSingle();
 
-    if (!existingParent) {
-      await sb.from('parents').insert({ id: authData.user.id, family_id: familyId, name: 'Parent' });
+    if (existingParent) {
+      isPrimaryParent = existingParent.is_primary;
+    } else {
+      const { data: inserted } = await sb
+        .from('parents')
+        .insert({ id: authData.user.id, family_id: familyId, name: 'Parent', is_primary: false })
+        .select('is_primary')
+        .single();
+      isPrimaryParent = inserted ? inserted.is_primary : false;
     }
 
     btn.disabled = false; btn.textContent = 'Continue';
     currentFamilyId = familyId;
     renderChildren();
     loadFamilyCode();
+    updateAddChildVisibility();
     showScreen('dashboard');
   }
 
   async function handleLogout() {
     await sb.auth.signOut();
     currentFamilyId = null;
+    isPrimaryParent = true;
     showScreen('front');
   }
 
@@ -436,13 +454,15 @@
     if (session) {
       const { data: parentRow } = await sb
         .from('parents')
-        .select('family_id')
+        .select('family_id, is_primary')
         .eq('id', session.user.id)
         .single();
       if (parentRow) {
         currentFamilyId = parentRow.family_id;
+        isPrimaryParent = parentRow.is_primary;
         renderChildren();
         loadFamilyCode();
+        updateAddChildVisibility();
         showScreen('dashboard');
       }
     }
