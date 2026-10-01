@@ -65,31 +65,29 @@
       <div class="name">PENROL</div>
       <div class="tag">Reading time, together</div>
     </div>
-    <button class="btn" onclick="showScreen('signup')">Create a family account</button>
-    <button class="btn-outline" onclick="showScreen('login')">I already have an account</button>
-    <p class="center-note">Children join with a code a parent gives them, not by signing up here.</p>
+    <button class="btn" onclick="showScreen('signup')">Create a family</button>
+    <button class="btn-outline" onclick="showScreen('login')">I have a code</button>
+    <p class="center-note">No email or password anywhere &mdash; everyone gets in with a code.</p>
   </div>
 
-  <!-- SIGN UP -->
+  <!-- CREATE FAMILY -->
   <div class="screen" id="screen-signup">
     <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
-    <h1>Create your family account</h1>
-    <p class="sub">This is the parent account. You'll add your children next.</p>
+    <h1>Create your family</h1>
+    <p class="sub">Just your name &mdash; you'll get a family code to log back in anywhere.</p>
     <div class="error" id="signup-error"></div>
     <div class="field"><label>Your name</label><input id="signup-name" type="text" placeholder="e.g. Blessing"></div>
-    <div class="field"><label>Email</label><input id="signup-email" type="email" placeholder="you@example.com"></div>
-    <div class="field"><label>Password</label><input id="signup-password" type="password" placeholder="At least 6 characters"></div>
-    <button class="btn" id="signup-btn" onclick="handleSignup()">Create account</button>
+    <button class="btn" id="signup-btn" onclick="handleSignup()">Create my family</button>
   </div>
 
-  <!-- LOGIN -->
+  <!-- ENTER CODE (login / co-parent / returning) -->
   <div class="screen" id="screen-login">
     <div class="topbar"><span class="back" onclick="showScreen('front')">&larr; Back</span></div>
-    <h1>Log in</h1>
+    <h1>Enter your code</h1>
+    <p class="sub">Use your family code to log in, or a code someone shared with you.</p>
     <div class="error" id="login-error"></div>
-    <div class="field"><label>Email</label><input id="login-email" type="email"></div>
-    <div class="field"><label>Password</label><input id="login-password" type="password"></div>
-    <button class="btn" id="login-btn" onclick="handleLogin()">Log in</button>
+    <div class="field"><label>Code</label><input id="login-code" type="text" maxlength="6" style="letter-spacing:4px;text-transform:uppercase;font-size:18px;text-align:center" placeholder="------"></div>
+    <button class="btn" id="login-btn" onclick="handleLogin()">Continue</button>
   </div>
 
   <!-- DASHBOARD -->
@@ -151,23 +149,20 @@
   async function handleSignup() {
     clearError('signup-error');
     const name = document.getElementById('signup-name').value.trim();
-    const email = document.getElementById('signup-email').value.trim();
-    const password = document.getElementById('signup-password').value;
-    if (!name || !email || password.length < 6) {
-      showError('signup-error', 'Please fill every field. Password needs at least 6 characters.');
+    if (!name) {
+      showError('signup-error', 'Enter your name.');
       return;
     }
     const btn = document.getElementById('signup-btn');
     btn.disabled = true; btn.textContent = 'Creating...';
 
-    const { data: authData, error: authError } = await sb.auth.signUp({ email, password });
+    const { data: authData, error: authError } = await sb.auth.signInAnonymously();
     if (authError) {
       showError('signup-error', authError.message);
-      btn.disabled = false; btn.textContent = 'Create account';
+      btn.disabled = false; btn.textContent = 'Create my family';
       return;
     }
 
-    // Create the family row
     const { data: familyData, error: familyError } = await sb
       .from('families')
       .insert({})
@@ -175,56 +170,68 @@
       .single();
 
     if (familyError) {
-      showError('signup-error', 'Account created, but family setup failed: ' + familyError.message);
-      btn.disabled = false; btn.textContent = 'Create account';
+      showError('signup-error', 'Family setup failed: ' + familyError.message);
+      btn.disabled = false; btn.textContent = 'Create my family';
       return;
     }
 
-    // Create the parent row, linked to the family
     const { error: parentError } = await sb
       .from('parents')
       .insert({ id: authData.user.id, family_id: familyData.id, name });
 
     if (parentError) {
-      showError('signup-error', 'Family created, but parent profile failed: ' + parentError.message);
-      btn.disabled = false; btn.textContent = 'Create account';
+      showError('signup-error', 'Parent profile failed: ' + parentError.message);
+      btn.disabled = false; btn.textContent = 'Create my family';
       return;
     }
 
     currentFamilyId = familyData.id;
-    btn.disabled = false; btn.textContent = 'Create account';
-    renderChildren();
-    showScreen('dashboard');
+    btn.disabled = false; btn.textContent = 'Create my family';
+    document.getElementById('code-title').textContent = 'Your family code';
+    document.getElementById('code-child-name').textContent = 'you, to log in anywhere';
+    document.getElementById('code-value').textContent = familyData.invite_code;
+    showScreen('child-code');
   }
 
   async function handleLogin() {
     clearError('login-error');
-    const email = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value;
+    const code = document.getElementById('login-code').value.trim().toUpperCase();
+    if (!code) {
+      showError('login-error', 'Enter a code.');
+      return;
+    }
     const btn = document.getElementById('login-btn');
-    btn.disabled = true; btn.textContent = 'Logging in...';
+    btn.disabled = true; btn.textContent = 'Checking...';
 
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) {
-      showError('login-error', error.message);
-      btn.disabled = false; btn.textContent = 'Log in';
+    const { data: lookup, error: lookupError } = await sb.rpc('get_family_by_code', { code_input: code });
+
+    if (lookupError || !lookup || lookup.length === 0) {
+      showError('login-error', "That code doesn't match any family.");
+      btn.disabled = false; btn.textContent = 'Continue';
       return;
     }
 
-    const { data: parentRow, error: parentError } = await sb
+    const familyId = lookup[0].id;
+
+    const { data: authData, error: authError } = await sb.auth.signInAnonymously();
+    if (authError) {
+      showError('login-error', authError.message);
+      btn.disabled = false; btn.textContent = 'Continue';
+      return;
+    }
+
+    const { data: existingParent } = await sb
       .from('parents')
-      .select('family_id')
-      .eq('id', data.user.id)
-      .single();
+      .select('id')
+      .eq('id', authData.user.id)
+      .maybeSingle();
 
-    btn.disabled = false; btn.textContent = 'Log in';
-
-    if (parentError || !parentRow) {
-      showError('login-error', 'Could not find your family profile.');
-      return;
+    if (!existingParent) {
+      await sb.from('parents').insert({ id: authData.user.id, family_id: familyId, name: 'Parent' });
     }
 
-    currentFamilyId = parentRow.family_id;
+    btn.disabled = false; btn.textContent = 'Continue';
+    currentFamilyId = familyId;
     renderChildren();
     showScreen('dashboard');
   }
@@ -261,6 +268,7 @@
 
     document.getElementById('child-name').value = '';
     document.getElementById('child-age').value = '';
+    document.getElementById('code-title').textContent = 'Profile created';
     document.getElementById('code-child-name').textContent = data.name;
     document.getElementById('code-value').textContent = data.join_code;
     showScreen('child-code');
