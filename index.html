@@ -146,6 +146,13 @@
     document.getElementById(elId).classList.remove('show');
   }
 
+  function generateCode(len = 6) {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L to avoid mix-ups
+    let out = '';
+    for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  }
+
   async function handleSignup() {
     clearError('signup-error');
     const name = document.getElementById('signup-name').value.trim();
@@ -163,11 +170,12 @@
       return;
     }
 
-    const { data: familyData, error: familyError } = await sb
+    const familyId = crypto.randomUUID();
+    const inviteCode = generateCode();
+
+    const { error: familyError } = await sb
       .from('families')
-      .insert({})
-      .select()
-      .single();
+      .insert({ id: familyId, invite_code: inviteCode });
 
     if (familyError) {
       showError('signup-error', 'Family setup failed: ' + familyError.message);
@@ -177,7 +185,7 @@
 
     const { error: parentError } = await sb
       .from('parents')
-      .insert({ id: authData.user.id, family_id: familyData.id, name });
+      .insert({ id: authData.user.id, family_id: familyId, name });
 
     if (parentError) {
       showError('signup-error', 'Parent profile failed: ' + parentError.message);
@@ -185,11 +193,11 @@
       return;
     }
 
-    currentFamilyId = familyData.id;
+    currentFamilyId = familyId;
     btn.disabled = false; btn.textContent = 'Create my family';
     document.getElementById('code-title').textContent = 'Your family code';
     document.getElementById('code-child-name').textContent = 'you, to log in anywhere';
-    document.getElementById('code-value').textContent = familyData.invite_code;
+    document.getElementById('code-value').textContent = inviteCode;
     showScreen('child-code');
   }
 
