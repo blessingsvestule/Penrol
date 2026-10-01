@@ -124,6 +124,7 @@
       <p class="sub">Turn on reading-time alerts for this device?</p>
       <button class="btn-outline" onclick="enableParentNotifications()">Turn on alerts</button>
     </div>
+    <p class="sub" style="text-align:center"><a onclick="enableParentNotifications()" style="color:var(--indigo);text-decoration:underline">Resync this device for alerts</a></p>
     <div id="children-list"></div>
     <button class="btn" id="add-child-btn" onclick="showScreen('add-child')">+ Add child</button>
     <p class="sub" id="coparent-note" style="display:none;text-align:center">Only the parent who created this family can add children.</p>
@@ -205,14 +206,19 @@
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
       });
       const subJson = sub.toJSON();
-      await sb.rpc('save_parent_push_subscription', {
+      const { error } = await sb.rpc('save_parent_push_subscription', {
         endpoint_input: subJson.endpoint,
         p256dh_input: subJson.keys.p256dh,
         auth_input: subJson.keys.auth
       });
+      if (error) {
+        alert('Could not save this device for alerts: ' + error.message);
+        return;
+      }
       document.getElementById('parent-notif-banner').style.display = 'none';
+      alert('This device is set up for reading-time alerts.');
     } catch (e) {
-      console.error('Notification setup failed', e);
+      alert('Notification setup failed: ' + e.message);
     }
   }
 
