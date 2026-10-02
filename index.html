@@ -199,7 +199,11 @@
   async function enableParentNotifications() {
     try {
       const permission = await Notification.requestPermission();
-      if (permission !== 'granted') { document.getElementById('parent-notif-banner').style.display = 'none'; return; }
+      if (permission !== 'granted') {
+        document.getElementById('parent-notif-banner').style.display = 'none';
+        alert('Notifications are currently set to "' + permission + '" for this site in your browser, not granted.');
+        return;
+      }
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
