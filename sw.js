@@ -4,8 +4,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: '/penrol/icons/icon-192.png',
-      badge: '/penrol/icons/icon-192.png',
+      icon: '/Penrol/icons/icon-192.png',
+      badge: '/Penrol/icons/icon-192.png',
       tag: 'penrol-reading-time',
       renotify: true
     })
@@ -17,9 +17,9 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url.includes('/penrol/') && 'focus' in client) return client.focus();
+        if (client.url.includes('/Penrol/') && 'focus' in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow('/penrol/');
+      if (clients.openWindow) return clients.openWindow('/Penrol/');
     })
   );
 });
