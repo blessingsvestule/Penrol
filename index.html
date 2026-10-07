@@ -54,6 +54,18 @@
   .topbar .back { color: var(--muted); font-size: 13px; cursor: pointer; }
   .spacer { flex: 1; }
   .center-note { text-align: center; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 9px 14px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--navy); font-size: 13px; font-weight: 600; }
+  .chip.on { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+  #tt-days { display: flex; flex-direction: column; gap: 10px; }
+  .day-block { background: #fff; border-radius: 14px; padding: 12px 14px; }
+  .day-block h2 { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 6px; }
+  .session { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--lavender); cursor: pointer; }
+  .session .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .session .s-name { font-weight: 600; font-size: 14px; }
+  .session .s-time { font-size: 12px; color: var(--muted); }
+  .tag-reminder { font-size: 10px; font-weight: 700; background: var(--lavender); color: var(--indigo); padding: 3px 8px; border-radius: 999px; }
+  .danger { color: var(--orange); border-color: var(--orange); }
 </style>
 </head>
 <body>
@@ -160,6 +172,32 @@
     </div>
     <p class="sub" style="text-align:center">This code only opens this child's own profile.</p>
     <button class="btn" onclick="renderChildren(); loadFamilyCode(); showScreen('dashboard')">Done</button>
+  </div>
+
+  <!-- TIMETABLE -->
+  <div class="screen" id="screen-timetable">
+    <div class="topbar"><span class="back" onclick="backToDashboard()">&larr; Back</span></div>
+    <h1 id="tt-title">Timetable</h1>
+    <p class="sub">Add the subjects and times for a normal week. Tap a session to change or delete it. Each day, the parent and child get one reminder at the day's first session.</p>
+    <div id="tt-days"></div>
+    <button class="btn" onclick="openSubjectForm()">+ Add subject</button>
+  </div>
+
+  <!-- ADD / EDIT SUBJECT -->
+  <div class="screen" id="screen-subject-form">
+    <div class="topbar"><span class="back" onclick="showScreen('timetable')">&larr; Back</span></div>
+    <h1 id="sf-title">Add subject</h1>
+    <div class="error" id="sf-error"></div>
+    <div class="field"><label>Subject</label><input id="sf-name" type="text" maxlength="40" placeholder="e.g. Mathematics"></div>
+    <div class="field" id="sf-days-field">
+      <label>Days</label>
+      <div class="chips" id="sf-days"></div>
+      <button type="button" class="link-btn" style="margin-top:8px" onclick="selectWeekdays()">Select Mon&ndash;Fri</button>
+    </div>
+    <div class="field"><label>Start time</label><input id="sf-time" type="time" value="16:00"></div>
+    <div class="field"><label>Minutes</label><input id="sf-duration" type="number" min="5" max="240" step="5" value="30"></div>
+    <button class="btn" id="sf-save" onclick="saveSubject()">Save</button>
+    <button class="btn-outline danger" id="sf-delete" style="display:none" onclick="deleteSubject()">Delete this session</button>
   </div>
 
 </div>
@@ -530,14 +568,179 @@
       const div = document.createElement('div');
       div.className = 'child-card';
       div.style.marginBottom = '8px';
+      div.style.cursor = 'pointer';
       div.innerHTML = `
-        <div class="avatar">${initial}</div>
+        <div class="avatar">${esc(initial)}</div>
         <div class="info">
-          <div class="n">${child.name}, ${child.age}</div>
-          <div class="a">Code: ${child.join_code}</div>
-        </div>`;
+          <div class="n">${esc(child.name)}, ${esc(child.age)}</div>
+          <div class="a">Code: ${esc(child.join_code)}</div>
+        </div>
+        <span class="sub">Timetable &rsaquo;</span>`;
+      div.onclick = () => openTimetable(child.id, child.name);
       list.appendChild(div);
     });
+  }
+
+  // ---------- TIMETABLE ----------
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DAY_ORDER = [1,2,3,4,5,6,0]; // Monday first, Sunday last. Stored as 0=Sunday..6=Saturday.
+  const SUBJECT_COLORS = ['#4A40C1','#F75A1A','#2E9E6B','#E0A800','#B03FC4','#1E88C9'];
+
+  let ttChild = null;
+  let ttSubjects = [];
+  let editingSubject = null;
+  let selectedDays = new Set();
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function formatTime(t) {
+    const [h, m] = t.split(':').map(Number);
+    const ap = h >= 12 ? 'pm' : 'am';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + ':' + String(m).padStart(2, '0') + ' ' + ap;
+  }
+
+  function colorFor(name) {
+    const n = name.trim().toLowerCase();
+    let h = 0;
+    for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+    return SUBJECT_COLORS[h % SUBJECT_COLORS.length];
+  }
+
+  function backToDashboard() {
+    renderChildren();
+    showScreen('dashboard');
+  }
+
+  async function openTimetable(id, name) {
+    ttChild = { id, name };
+    document.getElementById('tt-title').textContent = name + "'s timetable";
+    document.getElementById('tt-days').innerHTML = '<p class="sub">Loading...</p>';
+    showScreen('timetable');
+    await loadTimetable();
+  }
+
+  async function loadTimetable() {
+    const { data, error } = await sb
+      .from('subjects')
+      .select('*')
+      .eq('child_id', ttChild.id)
+      .order('start_time', { ascending: true });
+    if (error) {
+      document.getElementById('tt-days').innerHTML = '<div class="error show">Could not load the timetable: ' + esc(error.message) + '</div>';
+      return;
+    }
+    ttSubjects = data || [];
+    renderTimetable();
+  }
+
+  function renderTimetable() {
+    const box = document.getElementById('tt-days');
+    box.innerHTML = '';
+    DAY_ORDER.forEach(d => {
+      const rows = ttSubjects
+        .filter(s => s.day_of_week === d)
+        .sort((a, b) => a.start_time.localeCompare(b.start_time));
+      let html = '<h2>' + DAY_NAMES[d] + '</h2>';
+      if (rows.length === 0) html += '<p class="sub">Nothing scheduled</p>';
+      rows.forEach((s, i) => {
+        html += '<div class="session" onclick="openSubjectForm(\'' + s.id + '\')">' +
+          '<span class="dot" style="background:' + colorFor(s.name) + '"></span>' +
+          '<div style="flex:1"><div class="s-name">' + esc(s.name) + '</div>' +
+          '<div class="s-time">' + formatTime(s.start_time) + ' &middot; ' + s.duration_minutes + ' min</div></div>' +
+          (i === 0 ? '<span class="tag-reminder">reminder</span>' : '') +
+          '</div>';
+      });
+      const block = document.createElement('div');
+      block.className = 'day-block';
+      block.innerHTML = html;
+      box.appendChild(block);
+    });
+  }
+
+  function renderDayChips() {
+    const box = document.getElementById('sf-days');
+    box.innerHTML = '';
+    DAY_ORDER.forEach(d => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (selectedDays.has(d) ? ' on' : '');
+      b.textContent = DAY_SHORT[d];
+      b.onclick = () => {
+        if (selectedDays.has(d)) selectedDays.delete(d); else selectedDays.add(d);
+        renderDayChips();
+      };
+      box.appendChild(b);
+    });
+  }
+
+  function selectWeekdays() {
+    selectedDays = new Set([1, 2, 3, 4, 5]);
+    renderDayChips();
+  }
+
+  function openSubjectForm(id) {
+    clearError('sf-error');
+    editingSubject = id ? ttSubjects.find(s => String(s.id) === String(id)) || null : null;
+    const editing = !!editingSubject;
+    document.getElementById('sf-title').textContent = editing ? 'Edit ' + DAY_NAMES[editingSubject.day_of_week] + ' session' : 'Add subject';
+    document.getElementById('sf-name').value = editing ? editingSubject.name : '';
+    document.getElementById('sf-time').value = editing ? editingSubject.start_time.slice(0, 5) : '16:00';
+    document.getElementById('sf-duration').value = editing ? editingSubject.duration_minutes : 30;
+    document.getElementById('sf-days-field').style.display = editing ? 'none' : 'block';
+    document.getElementById('sf-delete').style.display = editing ? 'block' : 'none';
+    selectedDays = new Set();
+    renderDayChips();
+    showScreen('subject-form');
+  }
+
+  async function saveSubject() {
+    clearError('sf-error');
+    const name = document.getElementById('sf-name').value.trim();
+    const time = document.getElementById('sf-time').value;
+    const duration = parseInt(document.getElementById('sf-duration').value, 10);
+    if (!name) { showError('sf-error', 'Enter a subject name.'); return; }
+    if (!editingSubject && selectedDays.size === 0) { showError('sf-error', 'Pick at least one day.'); return; }
+    if (!time) { showError('sf-error', 'Pick a start time.'); return; }
+    if (!duration || duration < 5 || duration > 240) { showError('sf-error', 'Minutes should be between 5 and 240.'); return; }
+
+    const btn = document.getElementById('sf-save');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    let error = null;
+
+    if (editingSubject) {
+      const res = await sb.from('subjects')
+        .update({ name, start_time: time, duration_minutes: duration, color: colorFor(name) })
+        .eq('id', editingSubject.id)
+        .select();
+      error = res.error;
+      if (!error && (!res.data || res.data.length === 0)) error = { message: 'Nothing was changed. You may not have permission.' };
+    } else {
+      const rows = [...selectedDays].map(d => ({
+        child_id: ttChild.id, name, day_of_week: d, start_time: time, duration_minutes: duration, color: colorFor(name)
+      }));
+      const res = await sb.from('subjects').insert(rows);
+      error = res.error;
+    }
+
+    btn.disabled = false; btn.textContent = 'Save';
+    if (error) { showError('sf-error', 'Could not save: ' + error.message); return; }
+    await loadTimetable();
+    showScreen('timetable');
+  }
+
+  async function deleteSubject() {
+    if (!editingSubject) return;
+    if (!confirm('Delete this session?')) return;
+    const res = await sb.from('subjects').delete().eq('id', editingSubject.id).select();
+    let error = res.error;
+    if (!error && (!res.data || res.data.length === 0)) error = { message: 'Nothing was deleted. You may not have permission.' };
+    if (error) { showError('sf-error', 'Could not delete: ' + error.message); return; }
+    await loadTimetable();
+    showScreen('timetable');
   }
 
   // On load, check if already logged in
