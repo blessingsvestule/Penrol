@@ -66,6 +66,22 @@
   .session .s-time { font-size: 12px; color: var(--muted); }
   .tag-reminder { font-size: 10px; font-weight: 700; background: var(--lavender); color: var(--indigo); padding: 3px 8px; border-radius: 999px; }
   .danger { color: var(--orange); border-color: var(--orange); }
+  .notif-card { display: flex; align-items: center; gap: 12px; background: var(--lavender); border-radius: 14px; padding: 12px 14px; }
+  .notif-card .notif-text { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+  .notif-card .notif-text strong { font-size: 13px; color: var(--navy); }
+  .notif-btn { background: var(--indigo); color: #fff; border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 600; }
+  .day-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .day-head h2 { margin-bottom: 0; }
+  .add-day { background: var(--lavender); color: var(--indigo); border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 700; }
+  .edit-hint { font-size: 11px; color: var(--muted); }
+  .time-row { display: flex; gap: 10px; }
+  .time-row .field { flex: 1; }
+  .dur-note { font-size: 12px; color: var(--muted); margin-top: -2px; }
+  .warn-card { background: #FFF6DB; border: 1.5px solid var(--amber); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--navy); }
+  .warn-card strong { display: block; margin-bottom: 4px; }
+  .warn-card ul { margin: 0 0 0 18px; padding: 0; }
+  .warn-card li { margin: 2px 0; }
+  .warn-card .suggest { margin-top: 10px; background: var(--indigo); color: #fff; border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -132,11 +148,10 @@
       <span class="back" onclick="handleLogout()">Log out</span>
     </div>
     <p class="sub" id="dashboard-family-code"></p>
-    <div id="parent-notif-banner" style="display:none">
-      <p class="sub">Turn on reading-time alerts for this device?</p>
-      <button class="btn-outline" onclick="enableParentNotifications()">Turn on alerts</button>
+    <div id="parent-notif-banner" class="notif-card" style="display:none">
+      <div class="notif-text"><strong>Get reading-time alerts</strong><span>One ping a day, when your child's first session starts.</span></div>
+      <button class="notif-btn" onclick="enableParentNotifications()">Turn on</button>
     </div>
-    <button class="btn-outline" onclick="enableParentNotifications()" style="margin-top:8px">Resync this device for alerts</button>
     <div id="children-list"></div>
     <button class="btn" id="add-child-btn" onclick="showScreen('add-child')">+ Add child</button>
     <p class="sub" id="coparent-note" style="display:none;text-align:center">Only the parent who created this family can add children.</p>
@@ -178,7 +193,7 @@
   <div class="screen" id="screen-timetable">
     <div class="topbar"><span class="back" onclick="backToDashboard()">&larr; Back</span></div>
     <h1 id="tt-title">Timetable</h1>
-    <p class="sub">Add the subjects and times for a normal week. Tap a session to change or delete it. Each day, the parent and child get one reminder at the day's first session.</p>
+    <p class="sub">Use <strong>+ Add</strong> on any day to add as many subjects as you like. Tap an existing session to edit or delete it. Each day, you and your child get one reminder, at that day's first session.</p>
     <div id="tt-days"></div>
     <button class="btn" onclick="openSubjectForm()">+ Add subject</button>
   </div>
@@ -194,8 +209,12 @@
       <div class="chips" id="sf-days"></div>
       <button type="button" class="link-btn" style="margin-top:8px" onclick="selectWeekdays()">Select Mon&ndash;Fri</button>
     </div>
-    <div class="field"><label>Start time</label><input id="sf-time" type="time" value="16:00"></div>
-    <div class="field"><label>Minutes</label><input id="sf-duration" type="number" min="5" max="240" step="5" value="30"></div>
+    <div class="time-row">
+      <div class="field"><label>Start time</label><input id="sf-time" type="time" value="16:00" oninput="sfStartChanged()"></div>
+      <div class="field"><label>End time</label><input id="sf-end" type="time" value="16:30" oninput="sfUpdateDurationNote()"></div>
+    </div>
+    <p class="dur-note" id="sf-dur-note"></p>
+    <div id="sf-overlap" class="warn-card" style="display:none"></div>
     <button class="btn" id="sf-save" onclick="saveSubject()">Save</button>
     <button class="btn-outline danger" id="sf-delete" style="display:none" onclick="deleteSubject()">Delete this session</button>
   </div>
@@ -220,10 +239,32 @@
     return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
   }
 
+  async function syncParentSubscriptionQuietly() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      const subJson = sub.toJSON();
+      const { error } = await sb.rpc('save_parent_push_subscription', {
+        endpoint_input: subJson.endpoint,
+        p256dh_input: subJson.keys.p256dh,
+        auth_input: subJson.keys.auth
+      });
+      if (error) console.error('Quiet alert sync failed', error.message);
+    } catch (e) {
+      console.error('Quiet alert sync failed', e);
+    }
+  }
+
   async function maybeShowParentNotifBanner() {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
     if (Notification.permission === 'default') {
-      document.getElementById('parent-notif-banner').style.display = 'block';
+      document.getElementById('parent-notif-banner').style.display = 'flex';
+    } else if (Notification.permission === 'granted') {
+      document.getElementById('parent-notif-banner').style.display = 'none';
+      syncParentSubscriptionQuietly();
     }
   }
 
@@ -258,7 +299,6 @@
         return;
       }
       document.getElementById('parent-notif-banner').style.display = 'none';
-      alert('This device is set up for reading-time alerts.');
     } catch (e) {
       alert('Notification setup failed: ' + e.message);
     }
@@ -610,6 +650,19 @@
     return SUBJECT_COLORS[h % SUBJECT_COLORS.length];
   }
 
+  function toMinutes(t) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+  function minutesBetween(a, b) { return toMinutes(b) - toMinutes(a); }
+  function addMinutes(t, mins) {
+    const total = Math.min(toMinutes(t) + mins, 23 * 60 + 59);
+    return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+  }
+  function formatDuration(mins) {
+    const h = Math.floor(mins / 60), m = mins % 60;
+    if (h && m) return h + ' hr ' + m + ' min';
+    if (h) return h + ' hr';
+    return m + ' min';
+  }
+
   function backToDashboard() {
     renderChildren();
     showScreen('dashboard');
@@ -644,14 +697,15 @@
       const rows = ttSubjects
         .filter(s => s.day_of_week === d)
         .sort((a, b) => a.start_time.localeCompare(b.start_time));
-      let html = '<h2>' + DAY_NAMES[d] + '</h2>';
+      let html = '<div class="day-head"><h2>' + DAY_NAMES[d] + '</h2><button class="add-day" onclick="openSubjectForm(null,' + d + ')">+ Add</button></div>';
       if (rows.length === 0) html += '<p class="sub">Nothing scheduled</p>';
       rows.forEach((s, i) => {
         html += '<div class="session" onclick="openSubjectForm(\'' + s.id + '\')">' +
           '<span class="dot" style="background:' + colorFor(s.name) + '"></span>' +
           '<div style="flex:1"><div class="s-name">' + esc(s.name) + '</div>' +
-          '<div class="s-time">' + formatTime(s.start_time) + ' &middot; ' + s.duration_minutes + ' min</div></div>' +
+          '<div class="s-time">' + formatTime(s.start_time) + ' &ndash; ' + formatTime(addMinutes(s.start_time.slice(0, 5), s.duration_minutes)) + ' &middot; ' + formatDuration(s.duration_minutes) + '</div></div>' +
           (i === 0 ? '<span class="tag-reminder">reminder</span>' : '') +
+          '<span class="edit-hint">Edit &rsaquo;</span>' +
           '</div>';
       });
       const block = document.createElement('div');
@@ -672,6 +726,7 @@
       b.onclick = () => {
         if (selectedDays.has(d)) selectedDays.delete(d); else selectedDays.add(d);
         renderDayChips();
+        sfCheckOverlap();
       };
       box.appendChild(b);
     });
@@ -680,20 +735,121 @@
   function selectWeekdays() {
     selectedDays = new Set([1, 2, 3, 4, 5]);
     renderDayChips();
+    sfCheckOverlap();
   }
 
-  function openSubjectForm(id) {
+  let sfPrevStart = '16:00';
+
+  // Sessions that clash with a proposed time. Back-to-back (one ends exactly when the next starts) is fine.
+  function findConflicts(days, startStr, endStr, excludeId) {
+    const ns = toMinutes(startStr), ne = toMinutes(endStr);
+    const out = [];
+    ttSubjects.forEach(s => {
+      if (excludeId && String(s.id) === String(excludeId)) return;
+      if (!days.includes(s.day_of_week)) return;
+      const ss = toMinutes(s.start_time.slice(0, 5)), se = ss + s.duration_minutes;
+      if (ns < se && ne > ss) out.push({ s, ss, se });
+    });
+    return out.sort((a, b) => (DAY_ORDER.indexOf(a.s.day_of_week) - DAY_ORDER.indexOf(b.s.day_of_week)) || (a.ss - b.ss));
+  }
+
+  function currentFormDays() {
+    return editingSubject ? [editingSubject.day_of_week] : [...selectedDays];
+  }
+
+  function hhmm(mins) {
+    return String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+  }
+
+  function sfCheckOverlap() {
+    const box = document.getElementById('sf-overlap');
+    const btn = document.getElementById('sf-save');
+    const s = document.getElementById('sf-time').value, e = document.getElementById('sf-end').value;
+    const days = currentFormDays();
+    const excludeId = editingSubject ? editingSubject.id : null;
+    const hide = () => { box.style.display = 'none'; box.innerHTML = ''; btn.textContent = 'Save'; };
+    if (!s || !e || days.length === 0 || minutesBetween(s, e) <= 0) { hide(); return; }
+    const conflicts = findConflicts(days, s, e, excludeId);
+    if (conflicts.length === 0) { hide(); return; }
+
+    const shown = conflicts.slice(0, 3).map(x =>
+      '<li><strong style="display:inline">' + esc(x.s.name) + '</strong> on ' + DAY_NAMES[x.s.day_of_week] +
+      ' (' + formatTime(hhmm(x.ss)) + ' &ndash; ' + formatTime(addMinutes(hhmm(x.ss), x.s.duration_minutes)) + ')</li>').join('');
+    const more = conflicts.length > 3 ? '<li>and ' + (conflicts.length - 3) + ' more</li>' : '';
+
+    // Suggest the next slot of the same length that clashes with nothing
+    const dur = minutesBetween(s, e);
+    let cand = toMinutes(s), guard = 0, found = true;
+    while (guard++ < 30) {
+      const cs = findConflicts(days, hhmm(cand), hhmm(Math.min(cand + dur, 1439)), excludeId);
+      if (cs.length === 0) break;
+      cand = Math.max(...cs.map(x => x.se));
+      if (cand + dur > 1439) { found = false; break; }
+    }
+    if (guard >= 30) found = false;
+    let suggest = '';
+    if (found && cand !== toMinutes(s)) {
+      const ss = hhmm(cand), ee = hhmm(cand + dur);
+      suggest = '<button type="button" class="suggest" onclick="sfApplySuggestion(\'' + ss + '\',\'' + ee + '\')">Move to ' +
+        formatTime(ss) + ' &ndash; ' + formatTime(ee) + ' instead</button>';
+    }
+    box.innerHTML = '<strong>Heads up: this overlaps another session</strong><ul>' + shown + more + '</ul>' + suggest;
+    box.style.display = 'block';
+    btn.textContent = 'Save anyway';
+  }
+
+  function sfApplySuggestion(startStr, endStr) {
+    document.getElementById('sf-time').value = startStr;
+    document.getElementById('sf-end').value = endStr;
+    sfPrevStart = startStr;
+    sfUpdateDurationNote();
+  }
+
+  function sfUpdateDurationNote() {
+    const s = document.getElementById('sf-time').value, e = document.getElementById('sf-end').value;
+    const note = document.getElementById('sf-dur-note');
+    if (!s || !e) { note.textContent = ''; sfCheckOverlap(); return; }
+    const mins = minutesBetween(s, e);
+    note.textContent = mins > 0 ? 'That is ' + formatDuration(mins) + '.' : '';
+    sfCheckOverlap();
+  }
+
+  function sfStartChanged() {
+    const s = document.getElementById('sf-time').value;
+    const e = document.getElementById('sf-end').value;
+    if (!s) return;
+    let dur = (sfPrevStart && e) ? minutesBetween(sfPrevStart, e) : 30;
+    if (dur <= 0) dur = 30;
+    document.getElementById('sf-end').value = addMinutes(s, dur);
+    sfPrevStart = s;
+    sfUpdateDurationNote();
+  }
+
+  function openSubjectForm(id, presetDay) {
     clearError('sf-error');
     editingSubject = id ? ttSubjects.find(s => String(s.id) === String(id)) || null : null;
     const editing = !!editingSubject;
     document.getElementById('sf-title').textContent = editing ? 'Edit ' + DAY_NAMES[editingSubject.day_of_week] + ' session' : 'Add subject';
     document.getElementById('sf-name').value = editing ? editingSubject.name : '';
-    document.getElementById('sf-time').value = editing ? editingSubject.start_time.slice(0, 5) : '16:00';
-    document.getElementById('sf-duration').value = editing ? editingSubject.duration_minutes : 30;
+    // New session on a day that already has sessions: start where the last one ends
+    let startVal = '16:00';
+    if (editing) {
+      startVal = editingSubject.start_time.slice(0, 5);
+    } else if (presetDay !== undefined && presetDay !== null) {
+      const ends = ttSubjects.filter(s => s.day_of_week === presetDay)
+        .map(s => toMinutes(s.start_time.slice(0, 5)) + s.duration_minutes);
+      if (ends.length && Math.max(...ends) + 30 <= 1439) startVal = hhmm(Math.max(...ends));
+    }
+    document.getElementById('sf-time').value = startVal;
+    document.getElementById('sf-end').value = editing ? addMinutes(startVal, editingSubject.duration_minutes) : addMinutes(startVal, 30);
+    sfPrevStart = startVal;
+    sfUpdateDurationNote();
     document.getElementById('sf-days-field').style.display = editing ? 'none' : 'block';
     document.getElementById('sf-delete').style.display = editing ? 'block' : 'none';
     selectedDays = new Set();
+    if (!editing && presetDay !== undefined && presetDay !== null) selectedDays.add(presetDay);
     renderDayChips();
+    sfCheckOverlap();
     showScreen('subject-form');
   }
 
@@ -701,11 +857,13 @@
     clearError('sf-error');
     const name = document.getElementById('sf-name').value.trim();
     const time = document.getElementById('sf-time').value;
-    const duration = parseInt(document.getElementById('sf-duration').value, 10);
+    const endTime = document.getElementById('sf-end').value;
     if (!name) { showError('sf-error', 'Enter a subject name.'); return; }
     if (!editingSubject && selectedDays.size === 0) { showError('sf-error', 'Pick at least one day.'); return; }
     if (!time) { showError('sf-error', 'Pick a start time.'); return; }
-    if (!duration || duration < 5 || duration > 240) { showError('sf-error', 'Minutes should be between 5 and 240.'); return; }
+    if (!endTime) { showError('sf-error', 'Pick an end time.'); return; }
+    const duration = minutesBetween(time, endTime);
+    if (duration <= 0) { showError('sf-error', 'The end time must be after the start time.'); return; }
 
     const btn = document.getElementById('sf-save');
     btn.disabled = true; btn.textContent = 'Saving...';
@@ -727,7 +885,7 @@
     }
 
     btn.disabled = false; btn.textContent = 'Save';
-    if (error) { showError('sf-error', 'Could not save: ' + error.message); return; }
+    if (error) { sfCheckOverlap(); showError('sf-error', 'Could not save: ' + error.message); return; }
     await loadTimetable();
     showScreen('timetable');
   }
